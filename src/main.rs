@@ -4,30 +4,38 @@ use twitch_irc::{
     message::{PrivmsgMessage, ServerMessage},
     ClientConfig, SecureTCPTransport, TwitchIRCClient,
 };
+
+use dotenv;
+
+pub mod utility;
+
+pub use self::utility::formatting::apostrophe;
+pub use self::utility::formatting::rank_prefix;
 // use mongodb::{Client, options::ClientOptions};
 // use mongodb::bson::{Document};
 
 use std::sync::Arc;
 
 const PREFIX: char = '-';
-const OAUTH: &str = env!("TWITCH_TOKEN");
-const LOGIN_NAME: &str = env!("LOGIN_NAME");
-// const MONGO: &str = env!("MONGO");
-const HYPIXEL_API_KEY: &str = env!("HYPIXEL_API_KEY");
 
 #[tokio::main]
 pub async fn main() {
-    let login_name = LOGIN_NAME.to_owned();
+    dotenv::dotenv().ok();
 
-    // let client_options = ClientOptions::parse(MONGO.to_owned()).await.unwrap();
+    let oauth = dotenv::var("TWITCH_TOKEN").unwrap();
+    let login_name = dotenv::var("LOGIN_NAME").unwrap().to_owned();
+    // let mongo = dotenv::var("mongo").unwrap();
+    let hypixel_api_key = dotenv::var("HYPIXEL_API_KEY").unwrap();
+
+    // let client_options = ClientOptions::parse(mongo.to_owned()).await.unwrap();
     // let client = Client::with_options(client_options).unwrap();
 
     // let db = client.database("hypixelstatistics");
     // let collection = db.collection::<Document>("channels");
 
     let config = ClientConfig::new_simple(StaticLoginCredentials::new(
-        login_name,
-        Some(OAUTH.to_owned()),
+        login_name.clone(),
+        Some(oauth.to_owned()),
     ));
 
     let (mut incoming_messages, client) =
@@ -38,17 +46,18 @@ pub async fn main() {
     let other_client = client.clone();
     let join_handle = tokio::spawn(async move {
         while let Some(message) = incoming_messages.recv().await {
-            handle_message(message, &other_client).await;
+            handle_message(message, &other_client, hypixel_api_key.clone()).await;
         }
     });
 
-    client.join(LOGIN_NAME.to_owned()).unwrap();
+    client.join(login_name.to_owned()).unwrap();
     join_handle.await.unwrap();
 }
 
 async fn handle_message(
     msg: ServerMessage,
-    client: &Arc<TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>>
+    client: &Arc<TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>>,
+    hypixel_api_key: String,
 ) {
     match msg {
         ServerMessage::Privmsg(msg) => {
@@ -63,6 +72,7 @@ async fn handle_message(
                     msg.clone(),
                     message_args,
                     client.clone(),
+                    hypixel_api_key.clone(),
                 )
                 .await;
             }
@@ -75,6 +85,7 @@ async fn process_command(
     msg: PrivmsgMessage,
     args: Vec<&str>,
     client: Arc<TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>>,
+    hypixel_api_key: String
 ) {
     match args[0] {
         "get_username" | "gu" => {
@@ -85,7 +96,7 @@ async fn process_command(
             let uuid = args[1];
             let player = reqwest::get(format!(
                 "https://api.hypixel.net/player?uuid={}&key={}",
-                uuid, HYPIXEL_API_KEY
+                uuid, hypixel_api_key
             ))
             .await
             .unwrap()
@@ -96,7 +107,7 @@ async fn process_command(
 
             client
                 .reply_to_privmsg(
-                    format!("the player name of this player is {}!", player.playername).to_owned(),
+                    format!("you looked up {}{} statistics!", rank_prefix(player.rank, player.monthlyPackageRank, player.newPackageRank), apostrophe(player.displayname)).to_owned(),
                     &msg,
                 )
                 .await
@@ -119,5 +130,8 @@ struct HypixelInfo {
 
 #[derive(Deserialize)]
 struct Player {
-    playername: String,
+    displayname: String,
+    rank: String,
+    monthlyPackageRank: String,
+    newPackageRank: String
 }
