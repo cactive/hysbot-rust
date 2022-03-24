@@ -1,3 +1,7 @@
+mod commands;
+mod hypixel;
+mod utility;
+
 use crate::commands::process_command;
 
 use twitch_irc::{
@@ -5,25 +9,19 @@ use twitch_irc::{
     TwitchIRCClient,
 };
 
-pub mod commands;
-pub mod hypixel;
-pub mod utility;
-
 use mongodb::bson::{doc, Document};
 use mongodb::{options::ClientOptions, Client, Collection};
 
-use std::env;
+use std::{env, sync::Arc};
 
 const OAUTH: &str = env!("TWITCH_TOKEN");
 const HYPIXEL_API_KEY: &str = env!("HYPIXEL_API_KEY");
 const MONGO: &str = env!("MONGO");
 
-use std::sync::Arc;
-
 const PREFIX: &str = "-";
 
 #[tokio::main]
-pub async fn main() {
+async fn main() {
     let client_options = ClientOptions::parse(MONGO.to_owned()).await.unwrap();
     let client = Client::with_options(client_options).unwrap();
 
@@ -62,19 +60,7 @@ async fn handle_message(
 
             let channel_id = msg.channel_id.to_owned();
 
-            let prefix = match collection
-                .find_one(doc! {"channel_id": channel_id}, None)
-                .await
-            {
-                Ok(response) => match response {
-                    Some(item) => item.get_str("prefix").unwrap_or(PREFIX).to_owned(),
-                    None => PREFIX.to_owned(),
-                },
-                Err(e) => {
-                    println!("err: {}", e);
-                    PREFIX.to_owned()
-                }
-            };
+            let prefix = get_prefix(&channel_id, collection).await;
 
             if msg_content.starts_with(&prefix) && msg_content.len() > prefix.len() {
                 let message_without_prefix =
@@ -85,5 +71,22 @@ async fn handle_message(
             }
         }
         _ => {}
+    }
+}
+
+async fn get_prefix(channel_id: &str, collection: &Collection<Document>) -> String {
+    let channel_id = channel_id.to_owned();
+    match collection
+        .find_one(doc! {"channel_id": channel_id}, None)
+        .await
+    {
+        Ok(response) => match response {
+            Some(item) => item.get_str("prefix").unwrap_or(PREFIX).to_owned(),
+            None => PREFIX.to_owned(),
+        },
+        Err(e) => {
+            println!("err: {}", e);
+            PREFIX.to_owned()
+        }
     }
 }
