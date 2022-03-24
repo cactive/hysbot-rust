@@ -2,7 +2,7 @@ use crate::HYPIXEL_API_KEY;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-struct HypixelInfo {
+pub struct HypixelInfo {
     pub success: bool,
     pub cause: Option<String>,
     pub player: Option<Player>,
@@ -10,7 +10,7 @@ struct HypixelInfo {
 
 #[allow(non_snake_case)]
 #[derive(Deserialize)]
-struct Player {
+pub struct Player {
     pub displayname: Option<String>,
     pub rank: Option<String>,
     pub monthlyPackageRank: Option<String>,

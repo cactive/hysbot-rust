@@ -9,28 +9,26 @@ pub mod commands;
 pub mod hypixel;
 pub mod utility;
 
-//pub use self::utility::formatting::apostrophe;
-//pub use self::utility::formatting::rank_prefix;
-// use mongodb::{Client, options::ClientOptions};
-// use mongodb::bson::{Document};
+use mongodb::bson::{doc, Document};
+use mongodb::{options::ClientOptions, Client, Collection};
 
 use std::env;
 
 const OAUTH: &str = env!("TWITCH_TOKEN");
 const HYPIXEL_API_KEY: &str = env!("HYPIXEL_API_KEY");
-// const MONGO: &str = env!("MONGO");
+const MONGO: &str = env!("MONGO");
 
 use std::sync::Arc;
 
-const PREFIX: char = '-';
+const PREFIX: &str = "-";
 
 #[tokio::main]
 pub async fn main() {
-    // let client_options = ClientOptions::parse(MONGO.to_owned()).await.unwrap();
-    // let client = Client::with_options(client_options).unwrap();
+    let client_options = ClientOptions::parse(MONGO.to_owned()).await.unwrap();
+    let client = Client::with_options(client_options).unwrap();
 
-    // let db = client.database("hypixelstatistics");
-    // let collection = db.collection::<Document>("channels");
+    let db = client.database("hypixelstatistics");
+    let collection = db.collection::<Document>("channels");
 
     let config = ClientConfig::new_simple(StaticLoginCredentials::new(
         "cakier".to_owned(),
@@ -45,7 +43,7 @@ pub async fn main() {
     let other_client = client.clone();
     let join_handle = tokio::spawn(async move {
         while let Some(message) = incoming_messages.recv().await {
-            handle_message(message, &other_client).await;
+            handle_message(message, &other_client, &collection).await;
         }
     });
 
@@ -56,14 +54,31 @@ pub async fn main() {
 async fn handle_message(
     msg: ServerMessage,
     client: &Arc<TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>>,
+    collection: &Collection<Document>,
 ) {
     match msg {
         ServerMessage::Privmsg(msg) => {
             let msg_content = msg.message_text.trim();
 
-            if msg_content.starts_with(PREFIX) && msg_content.len() > PREFIX.len_utf8() {
+            let channel_id = msg.channel_id.to_owned();
+
+            let prefix = match collection
+                .find_one(doc! {"channel_id": channel_id}, None)
+                .await
+            {
+                Ok(response) => match response {
+                    Some(item) => item.get_str("prefix").unwrap_or(PREFIX).to_owned(),
+                    None => PREFIX.to_owned(),
+                },
+                Err(e) => {
+                    println!("err: {}", e);
+                    PREFIX.to_owned()
+                }
+            };
+
+            if msg_content.starts_with(&prefix) && msg_content.len() > prefix.len() {
                 let message_without_prefix =
-                    msg_content[PREFIX.len_utf8()..msg_content.len()].to_owned();
+                    msg_content[prefix.len()..msg_content.len()].to_owned();
 
                 let message_args: Vec<&str> = message_without_prefix.split_whitespace().collect();
                 process_command(msg.clone(), message_args, client.clone()).await;
