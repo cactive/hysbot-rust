@@ -1,5 +1,3 @@
-pub mod formatting;
-
 pub fn apostrophe(content: Option<String>) -> String {
     if content.is_some() {
         let content = content.unwrap();
