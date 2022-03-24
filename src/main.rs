@@ -1,14 +1,16 @@
-use serde::Deserialize;
+use crate::commands::process_command;
+
 use twitch_irc::{
-    login::StaticLoginCredentials,
-    message::{PrivmsgMessage, ServerMessage},
-    ClientConfig, SecureTCPTransport, TwitchIRCClient,
+    login::StaticLoginCredentials, message::ServerMessage, ClientConfig, SecureTCPTransport,
+    TwitchIRCClient,
 };
 
+pub mod commands;
+pub mod hypixel;
 pub mod utility;
 
-pub use self::utility::formatting::apostrophe;
-pub use self::utility::formatting::rank_prefix;
+//pub use self::utility::formatting::apostrophe;
+//pub use self::utility::formatting::rank_prefix;
 // use mongodb::{Client, options::ClientOptions};
 // use mongodb::bson::{Document};
 
@@ -68,104 +70,5 @@ async fn handle_message(
             }
         }
         _ => {}
-    }
-}
-
-async fn process_command(
-    msg: PrivmsgMessage,
-    args: Vec<&str>,
-    client: Arc<TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>>,
-) {
-    match args[0] {
-        "get_username" | "gu" => {
-            if args.len() < 2 {
-                println!("Player uuid not given!");
-                return;
-            }
-            let uuid = args[1];
-            get_username(&msg, client, uuid).await;
-        }
-        "ping" => {
-            client
-                .reply_to_privmsg("pong".to_owned(), &msg)
-                .await
-                .unwrap();
-        }
-        _ => {}
-    }
-}
-
-async fn get_username(msg: &PrivmsgMessage, client: Arc<TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>>, uuid: &str) {
-    let player = get_hypixel_player(uuid).await;
-
-    match player {
-        Ok(player) => {
-            client
-                .reply_to_privmsg(
-                    format!(
-                        "you looked up {}{} statistics!",
-                        rank_prefix(
-                            player.rank,
-                            player.monthlyPackageRank,
-                            player.newPackageRank
-                        ),
-                        apostrophe(player.displayname)
-                    )
-                    .to_owned(),
-                    &msg,
-                )
-                .await
-                .unwrap();
-        }
-        Err(err) => {
-            client
-                .reply_to_privmsg(format!("The error was {}", err).to_owned(), &msg)
-                .await
-                .unwrap();
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct HypixelInfo {
-    success: bool,
-    cause: Option<String>,
-    player: Option<Player>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize)]
-struct Player {
-    displayname: Option<String>,
-    rank: Option<String>,
-    monthlyPackageRank: Option<String>,
-    newPackageRank: Option<String>,
-}
-
-// async fn get_player_uuid
-
-async fn get_hypixel_player(uuid: &str) -> Result<Player, String> {
-    let request = match reqwest::get(format!(
-        "https://api.hypixel.net/player?uuid={}&key={}",
-        uuid, HYPIXEL_API_KEY
-    ))
-    .await
-    { // checks if server request succeeds
-        Ok(req) => req,
-        Err(e) => return Err(format!("Errored with: {}", e)),
-    };
-
-    let hypixel_info = match request.json::<HypixelInfo>().await { // checks if json parsing failed
-        Ok(json) => json,
-        Err(e) => return Err(format!("Errored with: {}", e)),
-    };
-
-    if !hypixel_info.success {
-        return Err(format!("Hypixel json fetching failed: {}!", hypixel_info.cause.unwrap()).to_owned());
-    }
-
-    match hypixel_info.player { // checks if player is null
-        Some(player) => Ok(player),
-        None => Err(format!("Player uuid not foud:n {}!", uuid)),
     }
 }
