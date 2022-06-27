@@ -61,7 +61,7 @@ pub fn rank_prefix(
             "MODERATOR" => return "[MOD] ",
             "HELPER" => return "HELPER] ",
             "ADMIN" => return "[ADMIN] ",
-            "GAME_MASTER" => return "[GM ]",
+            "GAME_MASTER" => return "[GM] ",
             _ => {}
         }
     }
